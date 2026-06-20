@@ -1,63 +1,47 @@
-"""LAYER 4 — Presentation: koostaa faktakoosteet Forbes-tyyliseksi raportiksi.
+"""LAYER 4 — Presentation (Chunk 1).
 
-State Pruning: vain lopulliset tiivistelmät + lähde-ID:t siirtyvät tähän
-kerrokseen, ei raakaa Layer 3 -välidataa, jotta input-tokenit pysyvät minimissä.
+DeepSeek V4-Flash turns the grounded fact sheets into one Forbes-style
+Markdown section with inline citations. State pruning + multi-section
+assembly come in later chunks.
 """
 
-from ssi_blog_agent.models import AgentResult, AgentStatus
+from ssi_blog_agent.clients import deepseek
 from ssi_blog_agent.state import GraphState
 
-REPORT_SYSTEM_PROMPT = """Olet asiantuntijatoimittaja. Kirjoita Forbes-tyylinen
-markkina-analyysiraportti annetuista faktakoosteista. Käytä skannattavia
-otsikoita, lihavoituja avainhavaintoja, vertailutaulukoita tilastoille ja
-blockquoteja kriittisille trendeille. Upota lähdeviite (linkki) jokaisen
-keskeisen tilastoluvun yhteyteen. Ei raakaa koodia tai jäsentelemättömiä
-datadumppeja."""
+REPORT_SYSTEM_PROMPT = """Olet talous- ja insinöörialan asiantuntijatoimittaja.
+Kirjoita YKSI Forbes-tyylinen markkina-analyysiosio (suomeksi, Markdown)
+annetuista faktakoosteista. Vaatimukset:
+- skannattava H2-otsikko
+- lihavoidut avainhavainnot
+- tarvittaessa vertailutaulukko tilastoille
+- blockquote yhdelle kriittiselle trendille
+- upota lähdeviitteet inline-linkkeinä keskeisten väitteiden yhteyteen
+Älä keksi lukuja — käytä vain koosteiden tietoja. Ei raakaa koodia tai
+jäsentelemättömiä datadumppeja."""
 
 
-def _prune_state_for_presentation(results: list[AgentResult]) -> list[dict]:
-    pruned = []
-    for result in results:
-        if result.status == AgentStatus.FAILED:
-            pruned.append({"agent": result.agent_name, "status": "failed", "error": result.error})
-            continue
-        pruned.append(
-            {
-                "agent": result.agent_name,
-                "status": "ok",
-                "facts": [
-                    {"fact": f.fact, "source_url": f.source_url} for f in result.facts
-                ],
-            }
+def _format_fact_sheets(state: GraphState) -> str:
+    blocks = []
+    for fs in state.get("fact_sheets", []):
+        sources = "; ".join(fs.sources) if fs.sources else "(ei lähteitä)"
+        blocks.append(
+            f"### Alikysymys: {fs.sub_query}\n{fs.summary}\n\nLähteet: {sources}"
         )
-    return pruned
-
-
-def _call_deepseek_presentation(pruned_facts: list[dict]) -> str:
-    """TODO: korvaa oikealla DeepSeek V4-Flash-kutsulla (raskas raakateksti),
-    valinnaisesti V4-Pro-loppusilaus editointiin."""
-    lines = ["# Viikon insinöörimarkkina-analyysi\n"]
-    for item in pruned_facts:
-        if item["status"] == "failed":
-            lines.append(
-                f"> ⚠️ Tietoja **{item['agent']}**-osa-alueelta ei saatu tällä "
-                f"viikolla: {item['error']}\n"
-            )
-        else:
-            for fact in item["facts"]:
-                lines.append(f"- {fact['fact']} ([lähde]({fact['source_url']}))")
-    return "\n".join(lines)
+    return "\n\n".join(blocks)
 
 
 def write_report(state: GraphState) -> GraphState:
-    if state.get("run_locked"):
-        return state
-
-    results = state.get("agent_results", [])
-    pruned = _prune_state_for_presentation(results)
-    report = _call_deepseek_presentation(pruned)
-
-    any_failed = any(r.status == AgentStatus.FAILED for r in results)
-    run_status = "partial" if any_failed else "success"
-
-    return {**state, "report_markdown": report, "run_status": run_status}
+    question = state["question"]
+    report = deepseek.chat(
+        [
+            {"role": "system", "content": REPORT_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    f"Jäsenkysymys: {question.text}\n\n"
+                    f"=== FAKTAKOOSTEET ===\n{_format_fact_sheets(state)}"
+                ),
+            },
+        ]
+    )
+    return {**state, "final_report": report, "run_status": "success"}

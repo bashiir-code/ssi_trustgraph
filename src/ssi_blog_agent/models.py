@@ -22,9 +22,28 @@ class MemberQuestion(BaseModel):
     votes: int = 0
 
 
-class ResearchChunk(BaseModel):
-    """One alikyselyiksi puretun jäsenkysymyksen tutkimustehtävä."""
+# --- Chunk 1 vertical-slice models ---
 
+
+class ResearchPlan(BaseModel):
+    """Triage output: domain + focused sub-queries for the research agent."""
+
+    domain: Domain
+    sub_queries: list[str]
+
+
+class FactSheet(BaseModel):
+    """One grounded research summary for a single sub-query, with sources."""
+
+    sub_query: str
+    summary: str
+    sources: list[str] = Field(default_factory=list)
+
+
+# --- Full-design models (Chunk 3 swarm, retained for later) ---
+
+
+class ResearchChunk(BaseModel):
     chunk_id: str
     question_id: str
     domain: Domain

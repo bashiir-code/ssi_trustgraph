@@ -1,81 +1,42 @@
-"""LAYER 2 — Triage: DeepSeek V4-Flash purkaa kysymykset Research Chunkeiksi.
+"""LAYER 2 — Triage (Chunk 1).
 
-Pydantic-validointi pakollisena + Enum-domainit + korjaussilmukka (max 2 yritystä)
-+ fallback-pohja, jos jäsennys epäonnistuu toistuvasti.
+DeepSeek V4-Flash breaks one question into focused sub-queries and picks a
+domain. Chunk 1 keeps this simple: try/except + a fallback plan, no
+conditional-edge retry loop yet (that arrives in Chunk 2).
 """
 
-import uuid
-
-from pydantic import ValidationError
-
-from ssi_blog_agent.config import settings
-from ssi_blog_agent.models import Domain, MemberQuestion, ResearchChunk, TriagePlan
+from ssi_blog_agent.clients import deepseek
+from ssi_blog_agent.models import Domain, ResearchPlan
 from ssi_blog_agent.state import GraphState
 
-TRIAGE_SYSTEM_PROMPT = """Olet triage-avustaja. Pura jäsenkysymykset yksittäisiksi
-tutkimusalikyselyiksi (research chunks) ja kategorisoi ne TARKALLEEN yhteen
-seuraavista domain-arvoista: construction, industrial, energy, other.
-Vastaa AINOASTAAN JSON-skeeman mukaisesti, ei mitään muuta tekstiä."""
+MAX_SUB_QUERIES = 3
+
+TRIAGE_SYSTEM_PROMPT = f"""Olet triage-avustaja suomalaiselle insinöörialan
+tutkimusagentille. Pura jäsenkysymys 2-{MAX_SUB_QUERIES} konkreettiseksi,
+itsenäiseksi hakukyselyksi, joilla löytyy tuoretta faktatietoa Suomen
+markkinasta. Valitse lisäksi domain TARKALLEEN yhdestä arvosta:
+construction, industrial, energy, other.
+
+Vastaa AINOASTAAN JSON-objektina muodossa:
+{{"domain": "<arvo>", "sub_queries": ["...", "..."]}}"""
 
 
-def _call_deepseek_triage(question: MemberQuestion, error_feedback: str | None) -> dict:
-    """TODO: korvaa oikealla DeepSeek V4-Flash structured-output -kutsulla.
-
-    error_feedback annetaan mallille korjaussilmukassa, jos edellinen yritys
-    tuotti virheellisen JSON:in.
-    """
-    return {
-        "chunk_id": str(uuid.uuid4()),
-        "question_id": question.id,
-        "domain": Domain.OTHER.value,
-        "research_prompt": question.text,
-    }
-
-
-def triage_questions(state: GraphState) -> GraphState:
-    if state.get("run_locked"):
-        return state
-
-    questions = state.get("deduped_questions", [])
-    attempts = state.get("triage_attempts", 0)
-    error_feedback = state.get("triage_error")
-
-    chunks: list[ResearchChunk] = []
-    last_error: str | None = None
-
-    for question in questions:
-        try:
-            raw = _call_deepseek_triage(question, error_feedback)
-            chunks.append(ResearchChunk.model_validate(raw))
-        except ValidationError as exc:
-            last_error = str(exc)
-            if attempts >= settings.triage_max_retries:
-                # Fallback-pohja: käsittele manuaalisesti "muu"-kategoriassa.
-                chunks.append(
-                    ResearchChunk(
-                        chunk_id=str(uuid.uuid4()),
-                        question_id=question.id,
-                        domain=Domain.OTHER,
-                        research_prompt=question.text,
-                    )
-                )
-
-    if last_error and attempts < settings.triage_max_retries:
-        return {
-            **state,
-            "triage_attempts": attempts + 1,
-            "triage_error": last_error,
-        }
-
-    return {
-        **state,
-        "triage_plan": TriagePlan(chunks=chunks),
-        "triage_error": None,
-    }
-
-
-def triage_needs_retry(state: GraphState) -> str:
-    """Conditional edge: palauttaako triage-solmuun vai jatkaako Layer 3:een."""
-    if state.get("triage_error") and "triage_plan" not in state:
-        return "retry"
-    return "continue"
+def triage(state: GraphState) -> GraphState:
+    question = state["question"]
+    try:
+        data = deepseek.chat_json(
+            [
+                {"role": "system", "content": TRIAGE_SYSTEM_PROMPT},
+                {"role": "user", "content": question.text},
+            ]
+        )
+        domain = Domain(data.get("domain", "other"))
+        sub_queries = [q for q in data.get("sub_queries", []) if q][:MAX_SUB_QUERIES]
+        if not sub_queries:
+            raise ValueError("Triage palautti tyhjän sub_queries-listan")
+        plan = ResearchPlan(domain=domain, sub_queries=sub_queries)
+        return {**state, "research_plan": plan}
+    except Exception as exc:
+        # Chunk 1: log + degrade to researching the raw question, don't crash.
+        plan = ResearchPlan(domain=Domain.OTHER, sub_queries=[question.text])
+        return {**state, "research_plan": plan, "error": f"triage fallback: {exc}"}

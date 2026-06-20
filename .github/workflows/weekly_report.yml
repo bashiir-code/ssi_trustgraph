@@ -19,18 +19,20 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . -r requirements.txt
-      # Chunk 0 (current stage): hardcoded question -> DeepSeek -> local .md
-      # + Supabase write, no LangGraph yet. Swap this to
-      # `python -m ssi_blog_agent.main` once Chunk 3+ has real Layer 3
-      # integrations (the LangGraph skeleton is otherwise still all stubs).
-      - name: "Chunk 0: DeepSeek + Supabase smoke test"
+      # Chunk 1 (current stage): real LangGraph vertical slice — top-voted
+      # Supabase question -> DeepSeek triage -> single Tavily research agent
+      # -> Forbes-style report -> artifact + Supabase. Grows into the full
+      # 5-question swarm in later chunks.
+      - name: "Chunk 1: vertical slice (1 question, all 4 layers)"
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python scripts/chunk0_smoke_test.py
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+        run: python -m ssi_blog_agent.main
       - uses: actions/upload-artifact@v4
         with:
-          name: chunk0-report
+          name: weekly-report
           path: artifacts/*.md
