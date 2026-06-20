@@ -1,14 +1,14 @@
-"""LAYER 2 — Triage with conditional-edge retry loop (Chunk 2).
+"""LAYER 2 — Triage with conditional-edge retry loop (Chunk 2 + 3).
 
-DeepSeek V4-Flash breaks one question into focused sub-queries and a strict
-Enum domain. The raw JSON is validated with Pydantic (ResearchPlan). On a
-malformed/invalid response the graph re-prompts Triage with the error
-message (max 2 attempts), then falls back to domain=other rather than
-crashing the run.
+DeepSeek V4-Flash breaks one question into focused sub-queries, tags each
+with the specialist that should research it (oracle/catalyst/quant), and
+picks a strict Enum domain. Raw JSON is validated with Pydantic
+(ResearchPlan). On a malformed/invalid response the graph re-prompts Triage
+with the error (max 2 attempts), then falls back rather than crashing.
 
 Wiring (see graph.py):
-    triage --route_after_triage--> { retry: triage, research, fallback }
-    triage_fallback --> research
+    triage --route_after_triage--> { retry: triage, supervisor, fallback }
+    triage_fallback --> supervisor
 """
 
 import json
@@ -16,7 +16,7 @@ import json
 from pydantic import ValidationError
 
 from ssi_blog_agent.clients import deepseek
-from ssi_blog_agent.models import Domain, ResearchPlan
+from ssi_blog_agent.models import Domain, ResearchPlan, Specialist, SubQuery
 from ssi_blog_agent.state import GraphState
 
 MAX_TRIAGE_ATTEMPTS = 2
@@ -24,12 +24,18 @@ MAX_SUB_QUERIES = 3
 
 TRIAGE_SYSTEM_PROMPT = f"""Olet triage-avustaja suomalaiselle insinöörialan
 tutkimusagentille. Pura jäsenkysymys 2-{MAX_SUB_QUERIES} konkreettiseksi,
-itsenäiseksi hakukyselyksi, joilla löytyy tuoretta faktatietoa Suomen
-markkinasta. Valitse lisäksi domain TARKALLEEN yhdestä arvosta:
+itsenäiseksi hakukyselyksi. Merkitse jokaiselle paras erikoisagentti:
+- "oracle": makro, sääntely, standardit (ISO/EU), toimialatrendit
+- "catalyst": teknologiat, työkalut, työnkulut, osaaminen ja kompetenssit
+- "quant": palkat, hinnat, kustannukset, numeeriset vertailut
+
+Valitse lisäksi domain TARKALLEEN yhdestä arvosta:
 construction, industrial, energy, other.
 
 Vastaa AINOASTAAN JSON-objektina, ei muuta tekstiä:
-{{"domain": "<arvo>", "sub_queries": ["...", "..."]}}"""
+{{"domain": "<arvo>", "sub_queries": [
+  {{"query": "...", "specialist": "oracle|catalyst|quant"}}
+]}}"""
 
 
 def triage(state: GraphState) -> GraphState:
@@ -42,7 +48,6 @@ def triage(state: GraphState) -> GraphState:
         {"role": "user", "content": question.text},
     ]
     if error_feedback:
-        # Re-prompt: feed the previous failure back to the model.
         messages.append(
             {
                 "role": "user",
@@ -55,7 +60,7 @@ def triage(state: GraphState) -> GraphState:
 
     try:
         data = deepseek.chat_json(messages)
-        plan = ResearchPlan.model_validate(data)  # Pydantic schema + Enum check
+        plan = ResearchPlan.model_validate(data)  # Pydantic + Enum checks
         plan.sub_queries = plan.sub_queries[:MAX_SUB_QUERIES]
         return {**state, "research_plan": plan, "triage_error": None}
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
@@ -70,14 +75,18 @@ def triage(state: GraphState) -> GraphState:
 
 def route_after_triage(state: GraphState) -> str:
     if state.get("research_plan") is not None:
-        return "research"
+        return "supervisor"
     if state.get("triage_attempts", 0) >= MAX_TRIAGE_ATTEMPTS:
         return "fallback"
     return "retry"
 
 
 def triage_fallback(state: GraphState) -> GraphState:
-    """After max attempts: research the raw question under domain=other."""
+    """After max attempts: research the raw question via the Oracle (broad
+    macro/context generalist) under domain=other."""
     question = state["question"]
-    plan = ResearchPlan(domain=Domain.OTHER, sub_queries=[question.text])
+    plan = ResearchPlan(
+        domain=Domain.OTHER,
+        sub_queries=[SubQuery(query=question.text, specialist=Specialist.ORACLE)],
+    )
     return {**state, "research_plan": plan, "triage_fallback_used": True}

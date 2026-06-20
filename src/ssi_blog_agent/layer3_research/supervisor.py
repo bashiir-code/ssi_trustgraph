@@ -1,39 +1,30 @@
-"""Supervisor-node: jakaa research chunkit Oracle/Catalyst/Quant-agenteille.
+"""Supervisor node (Chunk 3): reads the triage plan and routes each sub-query
+to the specialist tagged for it (oracle/catalyst/quant), collecting the
+resulting fact sheets.
 
-Concurrency control: rajoitettu rinnakkaisuus + viive käynnistysten välillä,
-jotta ilmaistason API-kiintiöt (Firecrawl/Tavily/Qdrant) eivät laukea 429:ää.
-Tuotannossa GitHub Actions matrix-strategia ajaa yhden chunkin per job —
-tämä supervisor vastaa yhden chunkin sisäisestä agenttien koordinoinnista
-(tai paikallisesta ajosta matrix-jobien ulkopuolella).
+Still sequential within a question; concurrency throttling (Chunk 4) and
+matrix jobs (Chunk 6) parallelise later.
 """
-
-from concurrent.futures import ThreadPoolExecutor
 
 from ssi_blog_agent.layer3_research.catalyst import CatalystAgent
 from ssi_blog_agent.layer3_research.oracle import OracleAgent
 from ssi_blog_agent.layer3_research.quant import QuantAgent
+from ssi_blog_agent.models import FactSheet, Specialist
 from ssi_blog_agent.state import GraphState
 
-MAX_CONCURRENCY = 2
-AGENTS = [OracleAgent(), CatalystAgent(), QuantAgent()]
+_AGENTS = {
+    Specialist.ORACLE: OracleAgent(),
+    Specialist.CATALYST: CatalystAgent(),
+    Specialist.QUANT: QuantAgent(),
+}
 
 
-def run_research_swarm(state: GraphState) -> GraphState:
-    if state.get("run_locked"):
-        return state
+def supervise(state: GraphState) -> GraphState:
+    plan = state["research_plan"]
+    fact_sheets: list[FactSheet] = []
 
-    plan = state.get("triage_plan")
-    if plan is None:
-        return state
+    for sub_query in plan.sub_queries:
+        agent = _AGENTS[sub_query.specialist]
+        fact_sheets.append(agent.research(sub_query.query))
 
-    results = []
-    with ThreadPoolExecutor(max_workers=MAX_CONCURRENCY) as pool:
-        futures = [
-            pool.submit(agent.run, chunk)
-            for chunk in plan.chunks
-            for agent in AGENTS
-        ]
-        for future in futures:
-            results.append(future.result())
-
-    return {**state, "agent_results": results}
+    return {**state, "fact_sheets": fact_sheets}

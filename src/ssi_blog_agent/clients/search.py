@@ -11,18 +11,26 @@ import httpx
 from ssi_blog_agent.config import settings
 
 
-def tavily_search(query: str, max_results: int = 5) -> list[dict]:
-    """Returns a list of {title, url, content} result dicts."""
-    resp = httpx.post(
-        "https://api.tavily.com/search",
-        json={
-            "api_key": settings.tavily_api_key,
-            "query": query,
-            "max_results": max_results,
-            "search_depth": "basic",
-        },
-        timeout=45,
-    )
+def tavily_search(
+    query: str,
+    max_results: int = 5,
+    include_domains: list[str] | None = None,
+) -> list[dict]:
+    """Returns a list of {title, url, content} result dicts.
+
+    include_domains biases results toward authoritative sources (Chunk 3
+    specialist source-steering).
+    """
+    payload: dict = {
+        "api_key": settings.tavily_api_key,
+        "query": query,
+        "max_results": max_results,
+        "search_depth": "basic",
+    }
+    if include_domains:
+        payload["include_domains"] = include_domains
+
+    resp = httpx.post("https://api.tavily.com/search", json=payload, timeout=45)
     resp.raise_for_status()
     return resp.json().get("results", [])
 
