@@ -19,11 +19,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . -r requirements.txt
-      # Chunk 1 (current stage): real LangGraph vertical slice — top-voted
-      # Supabase question -> DeepSeek triage -> single Tavily research agent
-      # -> Forbes-style report -> artifact + Supabase. Grows into the full
-      # 5-question swarm in later chunks.
-      - name: "Chunk 1: vertical slice (1 question, all 4 layers)"
+      # Real LangGraph pipeline: top-voted Supabase questions -> triage
+      # (+retry loop) -> research -> Forbes-style report -> artifact +
+      # Supabase. Currently 5 questions (Chunk 2); grows into the swarm
+      # (Chunk 3) and matrix jobs (Chunk 6) without changing this step.
+      - name: "Run weekly report pipeline"
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
