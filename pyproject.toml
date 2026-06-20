@@ -1,0 +1,8 @@
+[project]
+name = "ssi-blog-agent"
+version = "0.1.0"
+description = "Weekly engineering-market research and report agent for insinoorit.fi"
+requires-python = ">=3.11"
+
+[tool.setuptools.packages.find]
+where = ["src"]
