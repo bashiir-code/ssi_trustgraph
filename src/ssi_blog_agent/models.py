@@ -26,10 +26,15 @@ class MemberQuestion(BaseModel):
 
 
 class ResearchPlan(BaseModel):
-    """Triage output: domain + focused sub-queries for the research agent."""
+    """Triage output: domain + focused sub-queries for the research agent.
+
+    Doubles as the Pydantic schema validated against raw triage JSON:
+    an invalid domain or empty sub_queries raises ValidationError, which
+    drives the conditional-edge retry loop in Layer 2.
+    """
 
     domain: Domain
-    sub_queries: list[str]
+    sub_queries: list[str] = Field(min_length=1)
 
 
 class FactSheet(BaseModel):
