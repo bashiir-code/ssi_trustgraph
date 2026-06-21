@@ -63,6 +63,14 @@ class FactSheet(BaseModel):
     cache_hit: bool = False
 
 
+class QuestionResearch(BaseModel):
+    """All research for one question, collected for the global synthesis
+    layer so the analyst can reason across every topic at once."""
+
+    question: MemberQuestion
+    fact_sheets: list[FactSheet] = Field(default_factory=list)
+
+
 # --- Retained for later chunks ---
 
 

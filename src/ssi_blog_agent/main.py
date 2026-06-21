@@ -1,8 +1,10 @@
-"""Chunk 2 entrypoint — process the top 5 voted questions sequentially.
+"""Entrypoint — weekly report over the top 5 voted questions.
 
-For each question: run the per-question graph (triage + retry loop ->
-research -> report section). Combine the 5 sections into one weekly report,
-write it to a local artifact and the Supabase reports table.
+Phase 1 (per question): run the research graph (triage + retry -> swarm)
+to collect grounded fact sheets.
+Phase 2 (global, once): analyst (V4-Pro) reasons across ALL topics, then the
+writer (V4-Flash) renders one coherent expert report. Output -> local
+artifact + Supabase reports table.
 """
 
 import datetime
@@ -12,6 +14,8 @@ import sys
 from ssi_blog_agent.clients import deepseek, supabase_client
 from ssi_blog_agent.graph import build_graph
 from ssi_blog_agent.layer1_data_entry import fetch_top_questions
+from ssi_blog_agent.layer4_presentation import synthesize, write_report
+from ssi_blog_agent.models import QuestionResearch
 
 ARTIFACT_DIR = "artifacts"
 NUM_QUESTIONS = 5
@@ -24,31 +28,38 @@ def main() -> None:
         sys.exit(1)
 
     app = build_graph()
-    sections: list[str] = []
+    bundle: list[QuestionResearch] = []
     fallbacks: list[str] = []
     failures: list[str] = []
 
+    # Phase 1 — research each question (sequential; Chunk 4 adds throttling).
     for i, question in enumerate(questions, start=1):
-        print(f"[{i}/{len(questions)}] {question.text[:70]}...")
+        print(f"[{i}/{len(questions)}] research: {question.text[:65]}...")
         try:
             state = app.invoke({"question": question})
-            sections.append(state["final_report"])
+            bundle.append(
+                QuestionResearch(question=question, fact_sheets=state.get("fact_sheets", []))
+            )
             if state.get("triage_fallback_used"):
                 fallbacks.append(question.id)
         except Exception as exc:  # one bad question must not kill the batch
             print(f"  [warn] kysymys epäonnistui: {exc}", file=sys.stderr)
             failures.append(question.id)
 
-    if not sections:
-        print("Yksikään kysymys ei tuottanut osiota — ajo epäonnistui.", file=sys.stderr)
+    if not bundle:
+        print("Yksikään kysymys ei tuottanut tutkimusta — ajo epäonnistui.", file=sys.stderr)
         sys.exit(1)
 
-    date_str = datetime.date.today().isoformat()
-    header = (
-        f"# Viikon insinöörimarkkina-analyysi\n\n"
-        f"_{len(sections)} jäsenkysymystä · {date_str}_\n"
-    )
-    report = header + "\n" + "\n\n---\n\n".join(sections)
+    # Phase 2 — global synthesis (analyst -> writer).
+    print("Synthesis: analyst (V4-Pro) reasoning across all topics...")
+    try:
+        analyst_brief = synthesize(bundle)
+    except Exception as exc:
+        print(f"  [warn] analyst pass failed, writing without brief: {exc}", file=sys.stderr)
+        analyst_brief = ""
+
+    print("Synthesis: writer (V4-Flash) composing report...")
+    report = write_report(bundle, analyst_brief)
 
     os.makedirs(ARTIFACT_DIR, exist_ok=True)
     timestamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -63,7 +74,7 @@ def main() -> None:
 
     print(f"\nArtifact: {artifact_path}")
     print("Supabase: report inserted")
-    print(f"Sections: {len(sections)}/{len(questions)} | "
+    print(f"Researched: {len(bundle)}/{len(questions)} | "
           f"triage fallbacks: {len(fallbacks)} | failures: {len(failures)}")
     print(f"Token usage: {total_in} in / {total_out} out across {len(deepseek.usage_log)} calls")
 

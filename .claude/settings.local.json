@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(wsl.exe -e bash -c 'cd /home/bashiir/ssi_trustgraph && set -a && source .env && set +a && curl -s -o /dev/null -w '\\\\''HTTP %{http_code}\\\\n'\\\\'' \"$SUPABASE_URL/rest/v1/\" -H \"apikey: $SUPABASE_SERVICE_KEY\" -H \"Authorization: Bearer $SUPABASE_SERVICE_KEY\"')"
+      "Bash(wsl.exe -e bash -c 'cd /home/bashiir/ssi_trustgraph && set -a && source .env && set +a && curl -s -o /dev/null -w '\\\\''HTTP %{http_code}\\\\n'\\\\'' \"$SUPABASE_URL/rest/v1/\" -H \"apikey: $SUPABASE_SERVICE_KEY\" -H \"Authorization: Bearer $SUPABASE_SERVICE_KEY\"')",
+      "Bash(wsl.exe -e bash -lc 'cd /home/bashiir/ssi_trustgraph && f=$\\(ls -t artifacts/report_*.md | head -1\\) && echo \"file: $f \\(__CMDSUB_OUTPUT__ chars\\)\" && echo '\\\\''=== HEADINGS ==='\\\\'' && grep -n '\\\\''^#'\\\\'' \"$f\" && echo && echo '\\\\''=== uncertainty/scenario markers ==='\\\\'' && grep -nci -e '\\\\''varmuus'\\\\'' -e '\\\\''skenaario'\\\\'' -e '\\\\''oletus'\\\\'' -e '\\\\''ekstrapolaatio'\\\\'' -e '\\\\''arvio'\\\\'' \"$f\" | xargs echo '\\\\''marker lines:'\\\\''')"
     ]
   }
 }
