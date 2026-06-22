@@ -15,17 +15,19 @@ def tavily_search(
     query: str,
     max_results: int = 5,
     include_domains: list[str] | None = None,
+    search_depth: str = "basic",
 ) -> list[dict]:
     """Returns a list of {title, url, content} result dicts.
 
     include_domains biases results toward authoritative sources (Chunk 3
-    specialist source-steering).
+    specialist source-steering); search_depth="advanced" returns richer
+    content per result (deeper research, more credits).
     """
     payload: dict = {
         "api_key": settings.tavily_api_key,
         "query": query,
         "max_results": max_results,
-        "search_depth": "basic",
+        "search_depth": search_depth,
     }
     if include_domains:
         payload["include_domains"] = include_domains

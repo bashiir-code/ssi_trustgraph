@@ -36,7 +36,7 @@ class ResearchAgent:
                 cache_hit=True,
             )
 
-        # 2. Source-biased external search
+        # 2. Source-biased + broad external search (merged, deduped)
         results = research_tools.search_sources(
             query, include_domains=self.include_domains
         )
@@ -48,13 +48,16 @@ class ResearchAgent:
                 specialist=self.name,
             )
 
-        # 3. Pointer pattern
+        # 3. Full text of the top authoritative source (real depth, not snippets)
+        full_texts = research_tools.fetch_full_text(results)
+
+        # 4. Pointer pattern
         doc_id, sources = research_tools.persist_raw(query, results, agent=self.name)
 
-        # 4. Grounded compression (agent's own model + mandate)
-        summary = self._summarize(query, results)
+        # 5. Grounded compression (agent's own model + mandate)
+        summary = self._summarize(query, results, full_texts)
 
-        # 5. Cache for freshness reuse
+        # 6. Cache for freshness reuse
         qdrant_cache.put(query, summary, sources, doc_id=doc_id)
 
         return FactSheet(
@@ -65,8 +68,10 @@ class ResearchAgent:
             doc_id=doc_id,
         )
 
-    def _summarize(self, query: str, results: list[dict]) -> str:
-        context = research_tools.format_results(results)
+    def _summarize(
+        self, query: str, results: list[dict], full_texts: list[dict] | None = None
+    ) -> str:
+        context = research_tools.format_results(results, full_texts)
         return deepseek.chat(
             [
                 {"role": "system", "content": self.system_prompt},
@@ -74,6 +79,9 @@ class ResearchAgent:
                     "role": "user",
                     "content": (
                         f"Alikysymys: {query}\n\n{research_tools.DATA_GUARD}\n\n"
+                        "Poimi mahdollisimman monta konkreettista lukua (eurot, "
+                        "prosentit, päivämäärät, lukumäärät) ja merkitse kunkin "
+                        "väitteen lähde-URL. Ole tiivis mutta tietopitoinen.\n\n"
                         f"=== HAKUTULOKSET ===\n{context}"
                     ),
                 },

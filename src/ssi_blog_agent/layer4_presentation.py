@@ -1,4 +1,4 @@
-"""LAYER 4 — Synthesis & Presentation (analyst + writer).
+"""LAYER 4 — Synthesis & Presentation (analyst + writer + citations).
 
 Two-stage, runs ONCE over all questions' fact sheets:
 
@@ -8,10 +8,12 @@ Two-stage, runs ONCE over all questions' fact sheets:
      "so what" implications. Reasoning, not summary.
   2. writer (V4-Flash): renders one coherent expert report from the analyst
      brief + the fact sheets, with a synthesis lede, varied structure and
-     inline citations.
+     NUMBERED [n] inline citations. A deterministic ## Lähteet bibliography is
+     appended from the global source index (always complete, even if the
+     model's inline [n] usage is imperfect).
 
 Grounding is preserved: both stages use only the gathered, cited facts and
-must label extrapolation vs evidence (see feedback on analytical depth).
+must label extrapolation vs evidence.
 """
 
 from ssi_blog_agent.clients import deepseek
@@ -43,33 +45,58 @@ merkitse se ("Ekstrapolaatio:", "Arvio, matala varmuus:"). Tiivis,
 analyyttinen tyyli, ei markkinointikieltä."""
 
 WRITER_SYSTEM_PROMPT = """Olet asiantuntijatoimittaja. Saat (A) analyytikon
-muistion ja (B) tutkitut faktakoosteet lähteineen. Kirjoita YKSI yhtenäinen,
-asiantuntijatason markkina-analyysiraportti suomeksi (Markdown). Rakenne:
+muistion ja (B) tutkitut faktakoosteet, joiden lähteet on NUMEROITU [n].
+Kirjoita YKSI yhtenäinen, asiantuntijatason markkina-analyysiraportti suomeksi
+(Markdown). Rakenne:
 
 1. **Tiivistelmä & synteesi** (lede): aloita RISTIINKYTKEVÄLLÄ kokonaiskuvalla
-   — miten sääntely, teknologia ja työvoima/palkat kytkeytyvät. Tämä on
-   raportin tärkein osa.
+   — miten sääntely, teknologia ja työvoima/palkat kytkeytyvät.
 2. **Skenaariot & näkymät**: perus- ja vaihtoehtoskenaariot; merkitse
-   varmuustasot ja keskeiset oletukset selkeästi (esim. "(varmuus: matala)").
-3. **Teemakohtaiset syvennykset**: käsittele kukin aihe, mutta VIITTAA ristiin
-   muihin teemoihin äläkä toista samaa rakennetta joka osiossa — vaihtele
-   esitystapaa.
+   varmuustasot ja keskeiset oletukset (esim. "(varmuus: matala)").
+3. **Teemakohtaiset syvennykset**: käsittele kukin aihe, viittaa ristiin
+   muihin teemoihin, äläkä toista samaa rakennetta — vaihtele esitystapaa.
 
-Säännöt: älä keksi lukuja (vain koosteiden/muistion tiedot). Säilytä
-analyytikon epävarmuus-/ekstrapolaatiomerkinnät. Upota lähdeviitteet
-inline-linkkeinä keskeisten väitteiden yhteyteen. Vältä toistuvia kliseitä ja
-samaa lopetuskaavaa. Skannattavat otsikot, lihavoidut avainhavainnot, taulukko
-vain kun se tuo lisäarvoa."""
+Säännöt: älä keksi lukuja (vain koosteiden/muistion tiedot). SIDO jokainen
+keskeinen väite ja luku lähteeseen numeroidulla viitteellä [n], käyttäen
+koosteissa annettuja numeroita. ÄLÄ luo omaa lähdeluetteloa — se liitetään
+automaattisesti. Säilytä epävarmuus-/ekstrapolaatiomerkinnät. Vältä toistuvia
+kliseitä. Skannattavat otsikot, lihavoidut avainhavainnot, taulukko vain kun
+se tuo lisäarvoa."""
 
 
-def _format_bundle(bundle: list[QuestionResearch]) -> str:
+def build_source_index(bundle: list[QuestionResearch]) -> tuple[dict[str, int], list[str]]:
+    """Assign a stable [n] to every unique source URL across all fact sheets."""
+    index: dict[str, int] = {}
+    ordered: list[str] = []
+    for qr in bundle:
+        for fs in qr.fact_sheets:
+            for url in fs.sources:
+                if url not in index:
+                    ordered.append(url)
+                    index[url] = len(ordered)
+    return index, ordered
+
+
+def _format_for_analyst(bundle: list[QuestionResearch]) -> str:
     blocks = []
     for i, qr in enumerate(bundle, start=1):
         lines = [f"## Kysymys {i}: {qr.question.text}"]
         for fs in qr.fact_sheets:
             tag = fs.specialist or "?"
-            sources = "; ".join(fs.sources) if fs.sources else "(ei lähteitä)"
-            lines.append(f"### [{tag}] {fs.sub_query}\n{fs.summary}\nLähteet: {sources}")
+            srcs = "; ".join(fs.sources) if fs.sources else "(ei lähteitä)"
+            lines.append(f"### [{tag}] {fs.sub_query}\n{fs.summary}\nLähteet: {srcs}")
+        blocks.append("\n\n".join(lines))
+    return "\n\n---\n\n".join(blocks)
+
+
+def _format_for_writer(bundle: list[QuestionResearch], index: dict[str, int]) -> str:
+    blocks = []
+    for i, qr in enumerate(bundle, start=1):
+        lines = [f"## Kysymys {i}: {qr.question.text}"]
+        for fs in qr.fact_sheets:
+            tag = fs.specialist or "?"
+            refs = ", ".join(f"[{index[u]}]" for u in fs.sources if u in index) or "(ei lähteitä)"
+            lines.append(f"### [{tag}] {fs.sub_query}\n{fs.summary}\nLähdeviitteet: {refs}")
         blocks.append("\n\n".join(lines))
     return "\n\n---\n\n".join(blocks)
 
@@ -79,7 +106,7 @@ def synthesize(bundle: list[QuestionResearch]) -> str:
     return deepseek.chat(
         [
             {"role": "system", "content": ANALYST_SYSTEM_PROMPT},
-            {"role": "user", "content": f"=== FAKTAKOOSTEET ===\n{_format_bundle(bundle)}"},
+            {"role": "user", "content": f"=== FAKTAKOOSTEET ===\n{_format_for_analyst(bundle)}"},
         ],
         model=ANALYST_MODEL,
         temperature=0.4,
@@ -87,18 +114,26 @@ def synthesize(bundle: list[QuestionResearch]) -> str:
 
 
 def write_report(bundle: list[QuestionResearch], analyst_brief: str) -> str:
-    """Writer pass (V4-Flash): render one coherent expert report."""
-    return deepseek.chat(
+    """Writer pass (V4-Flash) + deterministic numbered bibliography."""
+    index, ordered = build_source_index(bundle)
+
+    body = deepseek.chat(
         [
             {"role": "system", "content": WRITER_SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": (
                     f"=== ANALYYTIKON MUISTIO ===\n{analyst_brief}\n\n"
-                    f"=== FAKTAKOOSTEET (lähteet) ===\n{_format_bundle(bundle)}"
+                    f"=== FAKTAKOOSTEET (numeroidut lähteet) ===\n"
+                    f"{_format_for_writer(bundle, index)}"
                 ),
             },
         ],
         model=WRITER_MODEL,
         temperature=0.5,
     )
+
+    bibliography = "\n\n## Lähteet\n\n" + "\n".join(
+        f"[{n}] {url}" for n, url in enumerate(ordered, start=1)
+    )
+    return body + bibliography
