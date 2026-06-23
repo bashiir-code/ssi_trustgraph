@@ -14,7 +14,9 @@ from ssi_blog_agent.models import CriticAssessment
 from ssi_blog_agent.state import GraphState
 
 CRITIC_MODEL = "deepseek-v4-pro"
-MAX_RESEARCH_ROUNDS = 3
+MAX_RESEARCH_ROUNDS = 2  # initial + 1 targeted follow-up; coverage rarely
+# improves in a 3rd round when the gap is a genuine data scarcity, so the
+# extra round mostly burned time. Focused > exhaustive.
 COVERAGE_THRESHOLD = 85
 MAX_FOLLOWUPS_PER_ROUND = 3
 

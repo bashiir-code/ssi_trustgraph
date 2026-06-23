@@ -58,9 +58,12 @@ def tavily_search(
     return resp.json().get("results", [])
 
 
-@_RETRY
-def firecrawl_scrape(url: str, wait_for: int = 0) -> str:
-    """Returns clean markdown for a page. Set wait_for (ms) for JS-heavy SPAs."""
+def firecrawl_scrape(url: str, wait_for: int = 0, timeout: float = 25.0) -> str:
+    """Returns clean markdown for a page. Set wait_for (ms) for JS-heavy SPAs.
+
+    NOT retried: full-text is supplementary depth (Tavily snippets + official
+    data are the essential research), so a slow/blocked page must FAIL FAST and
+    degrade — retrying a 25s timeout several times stalled whole runs."""
     payload: dict = {"url": url, "formats": ["markdown"]}
     if wait_for:
         payload["waitFor"] = wait_for
@@ -69,7 +72,7 @@ def firecrawl_scrape(url: str, wait_for: int = 0) -> str:
         "https://api.firecrawl.dev/v1/scrape",
         headers={"Authorization": f"Bearer {settings.firecrawl_api_key}"},
         json=payload,
-        timeout=90,
+        timeout=timeout,
     )
     resp.raise_for_status()
     return resp.json().get("data", {}).get("markdown", "")
