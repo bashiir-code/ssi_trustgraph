@@ -12,9 +12,6 @@ class Settings:
     supabase_url: str = os.getenv("SUPABASE_URL", "")
     supabase_service_key: str = os.getenv("SUPABASE_SERVICE_KEY", "")
 
-    qdrant_url: str = os.getenv("QDRANT_URL", "")
-    qdrant_api_key: str = os.getenv("QDRANT_API_KEY", "")
-
     upstash_redis_url: str = os.getenv("UPSTASH_REDIS_REST_URL", "")
     upstash_redis_token: str = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 
@@ -27,7 +24,6 @@ class Settings:
     monthly_budget_eur: float = float(os.getenv("MONTHLY_BUDGET_EUR", "5.00"))
 
     cache_freshness_days: int = 7
-    qdrant_freshness_days: int = 30
     triage_max_retries: int = 2
 
 

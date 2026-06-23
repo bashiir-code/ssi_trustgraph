@@ -82,12 +82,3 @@ class QuestionResearch(BaseModel):
     coverage: int = 0
     rounds: int = 1
     validation_note: str = ""
-
-
-# --- Retained for later chunks ---
-
-
-class SourcedFact(BaseModel):
-    fact: str
-    source_url: str
-    document_id: str

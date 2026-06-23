@@ -10,7 +10,7 @@ confidence. Defensive: a failure yields an empty note, never a crash.
 from ssi_blog_agent.clients import deepseek
 from ssi_blog_agent.state import GraphState
 
-VALIDATOR_MODEL = "deepseek-v4-pro"
+VALIDATOR_MODEL = "deepseek-v4-flash"  # checking is lighter than analysis
 
 VALIDATOR_SYSTEM_PROMPT = """Olet huolellinen faktantarkistaja. Saat
 jäsenkysymyksen ja siihen kerätyt faktakoosteet lähteineen. Tarkista

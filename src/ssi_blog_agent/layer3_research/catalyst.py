@@ -1,5 +1,6 @@
-"""The Catalyst (V4-Pro) — Kyvykkyys & toteutus: teknologiapinot, työnkulut,
-työkalut, kompetenssit. Vaatii syvää kontekstin ymmärrystä."""
+"""The Catalyst — Kyvykkyys & toteutus: teknologiapinot, työnkulut, työkalut,
+kompetenssit. Summarointi on pohjustettua poimintaa -> V4-Flash riittää;
+raskas päättely tapahtuu critic- ja analyst-kerroksissa (V4-Pro)."""
 
 from ssi_blog_agent.layer3_research.base_agent import ResearchAgent
 
@@ -14,6 +15,6 @@ Viittaa keskeisiin lähde-URLeihin."""
 
 class CatalystAgent(ResearchAgent):
     name = "catalyst"
-    model = "deepseek-v4-pro"
+    model = "deepseek-v4-flash"
     system_prompt = CATALYST_PROMPT
     include_domains = ["teknologiateollisuus.fi", "tek.fi"]

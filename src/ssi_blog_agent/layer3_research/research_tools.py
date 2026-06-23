@@ -61,8 +61,18 @@ def search_sources(
     return list(collected.values())[:MAX_MERGED_RESULTS]
 
 
+def _snippets_thin(results: list[dict]) -> bool:
+    """True when Tavily snippets are sparse enough to warrant a full scrape."""
+    total_chars = sum(len(r.get("content", "")) for r in results)
+    return len(results) < 3 or total_chars < 1500
+
+
 def fetch_full_text(results: list[dict], top_n: int = FULL_TEXT_TOP_N) -> list[dict]:
-    """Firecrawl the top non-excluded results for full article text."""
+    """Firecrawl the top non-excluded result(s) — but only when the snippets
+    are thin. Skipping the scrape when snippets already suffice is the biggest
+    per-query speed/rate-limit saving."""
+    if not _snippets_thin(results):
+        return []
     texts: list[dict] = []
     for r in results:
         if len(texts) >= top_n:
