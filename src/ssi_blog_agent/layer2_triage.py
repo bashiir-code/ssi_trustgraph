@@ -20,7 +20,7 @@ from ssi_blog_agent.models import Domain, ResearchPlan, Specialist, SubQuery
 from ssi_blog_agent.state import GraphState
 
 MAX_TRIAGE_ATTEMPTS = 2
-MAX_SUB_QUERIES = 3
+MAX_SUB_QUERIES = 4  # initial coverage; the critic adds follow-ups per round
 
 TRIAGE_SYSTEM_PROMPT = f"""Olet triage-avustaja suomalaiselle insinöörialan
 tutkimusagentille. Pura jäsenkysymys 2-{MAX_SUB_QUERIES} konkreettiseksi,
@@ -62,7 +62,16 @@ def triage(state: GraphState) -> GraphState:
         data = deepseek.chat_json(messages)
         plan = ResearchPlan.model_validate(data)  # Pydantic + Enum checks
         plan.sub_queries = plan.sub_queries[:MAX_SUB_QUERIES]
-        return {**state, "research_plan": plan, "triage_error": None}
+        # Seed the iterative research loop.
+        return {
+            **state,
+            "research_plan": plan,
+            "triage_error": None,
+            "pending_sub_queries": plan.sub_queries,
+            "fact_sheets": [],
+            "researched_keys": set(),
+            "research_round": 1,
+        }
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
         # ValueError covers json.JSONDecodeError (malformed JSON) too.
         return {
@@ -89,4 +98,12 @@ def triage_fallback(state: GraphState) -> GraphState:
         domain=Domain.OTHER,
         sub_queries=[SubQuery(query=question.text, specialist=Specialist.ORACLE)],
     )
-    return {**state, "research_plan": plan, "triage_fallback_used": True}
+    return {
+        **state,
+        "research_plan": plan,
+        "triage_fallback_used": True,
+        "pending_sub_queries": plan.sub_queries,
+        "fact_sheets": [],
+        "researched_keys": set(),
+        "research_round": 1,
+    }

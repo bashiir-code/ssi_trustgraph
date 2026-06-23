@@ -32,14 +32,25 @@ def main() -> None:
     fallbacks: list[str] = []
     failures: list[str] = []
 
-    # Phase 1 — research each question (sequential; Chunk 4 adds throttling).
+    # Phase 1 — iterative deep research per question (sequential; Chunk 4 adds
+    # throttling). Each question loops research -> critic -> research more.
     for i, question in enumerate(questions, start=1):
         print(f"[{i}/{len(questions)}] research: {question.text[:65]}...")
         try:
-            state = app.invoke({"question": question})
+            state = app.invoke({"question": question}, {"recursion_limit": 50})
+            sheets = state.get("fact_sheets", [])
+            rounds = state.get("research_round", 1)
+            coverage = state.get("coverage", 0)
             bundle.append(
-                QuestionResearch(question=question, fact_sheets=state.get("fact_sheets", []))
+                QuestionResearch(
+                    question=question,
+                    fact_sheets=sheets,
+                    coverage=coverage,
+                    rounds=rounds,
+                    validation_note=state.get("validation_note", ""),
+                )
             )
+            print(f"  -> {len(sheets)} fact sheets, {rounds} round(s), coverage {coverage}%")
             if state.get("triage_fallback_used"):
                 fallbacks.append(question.id)
         except Exception as exc:  # one bad question must not kill the batch

@@ -85,6 +85,8 @@ def _format_for_analyst(bundle: list[QuestionResearch]) -> str:
             tag = fs.specialist or "?"
             srcs = "; ".join(fs.sources) if fs.sources else "(ei lähteitä)"
             lines.append(f"### [{tag}] {fs.sub_query}\n{fs.summary}\nLähteet: {srcs}")
+        if qr.validation_note:
+            lines.append(f"**Faktantarkistus (kattavuus {qr.coverage}%):** {qr.validation_note}")
         blocks.append("\n\n".join(lines))
     return "\n\n---\n\n".join(blocks)
 

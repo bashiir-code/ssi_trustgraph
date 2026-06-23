@@ -16,10 +16,20 @@ from ssi_blog_agent.graph import build_graph
 from ssi_blog_agent.models import Domain, MemberQuestion, Specialist
 
 # --- Neutralise all Layer 3 / 4 network so the test is offline & fast ---
-research_tools.search_sources = lambda query, include_domains=None, max_results=4: []
+research_tools.search_sources = lambda query, include_domains=None: []
 qdrant_cache.get_fresh = lambda query: None
 qdrant_cache.put = lambda *a, **k: None
 deepseek.chat = lambda messages, **kwargs: "stub-summary-or-report"
+
+
+def _is_triage(messages) -> bool:
+    return any("triage-avustaja" in m.get("content", "") for m in messages)
+
+
+def _benign_critic() -> dict:
+    # High coverage, no follow-ups -> ends the deep-research loop immediately.
+    return {"coverage": 100, "gaps": [], "follow_up_queries": []}
+
 
 Q = MemberQuestion(id="test-1", text="Testikysymys insinöörimarkkinasta?", votes=1)
 
@@ -29,6 +39,8 @@ def scenario_always_bad() -> bool:
     calls = {"n": 0}
 
     def bad_chat_json(messages, **kwargs):
+        if not _is_triage(messages):
+            return _benign_critic()  # critic call -> end loop, don't count
         calls["n"] += 1
         raise ValueError("forced malformed JSON")  # simulates json.loads failure
 
@@ -53,6 +65,8 @@ def scenario_bad_then_good() -> bool:
     calls = {"n": 0}
 
     def flaky_chat_json(messages, **kwargs):
+        if not _is_triage(messages):
+            return _benign_critic()  # critic call -> end loop, don't count
         calls["n"] += 1
         if calls["n"] == 1:
             return {"domain": "not_a_real_domain", "sub_queries": []}  # invalid

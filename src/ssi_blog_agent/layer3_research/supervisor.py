@@ -1,9 +1,9 @@
-"""Supervisor node (Chunk 3): reads the triage plan and routes each sub-query
-to the specialist tagged for it (oracle/catalyst/quant), collecting the
-resulting fact sheets.
+"""Supervisor node (Chunk 3 + iterative loop): researches the CURRENT round's
+pending sub-queries, routing each to its specialist, and ACCUMULATES fact
+sheets across rounds. Deduplicates against already-researched sub-queries.
 
-Still sequential within a question; concurrency throttling (Chunk 4) and
-matrix jobs (Chunk 6) parallelise later.
+Still sequential within a round; concurrency throttling (Chunk 4) and matrix
+jobs (Chunk 6) parallelise later.
 """
 
 from ssi_blog_agent.layer3_research.catalyst import CatalystAgent
@@ -20,11 +20,21 @@ _AGENTS = {
 
 
 def supervise(state: GraphState) -> GraphState:
-    plan = state["research_plan"]
-    fact_sheets: list[FactSheet] = []
+    pending = state.get("pending_sub_queries", [])
+    fact_sheets: list[FactSheet] = list(state.get("fact_sheets", []))
+    researched: set[str] = set(state.get("researched_keys", set()))
 
-    for sub_query in plan.sub_queries:
+    for sub_query in pending:
+        key = sub_query.query.strip().lower()
+        if key in researched:
+            continue
         agent = _AGENTS[sub_query.specialist]
         fact_sheets.append(agent.research(sub_query.query))
+        researched.add(key)
 
-    return {**state, "fact_sheets": fact_sheets}
+    return {
+        **state,
+        "fact_sheets": fact_sheets,
+        "researched_keys": researched,
+        "pending_sub_queries": [],
+    }

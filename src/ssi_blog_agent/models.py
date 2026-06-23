@@ -63,12 +63,23 @@ class FactSheet(BaseModel):
     cache_hit: bool = False
 
 
+class CriticAssessment(BaseModel):
+    """Gap-analysis output of the iterative deep-research loop."""
+
+    coverage: int = Field(ge=0, le=100)
+    gaps: list[str] = Field(default_factory=list)
+    follow_up_queries: list[SubQuery] = Field(default_factory=list)
+
+
 class QuestionResearch(BaseModel):
     """All research for one question, collected for the global synthesis
     layer so the analyst can reason across every topic at once."""
 
     question: MemberQuestion
     fact_sheets: list[FactSheet] = Field(default_factory=list)
+    coverage: int = 0
+    rounds: int = 1
+    validation_note: str = ""
 
 
 # --- Retained for later chunks ---
