@@ -1,25 +1,34 @@
-"""Token-pohjainen kustannuslaskuri ja budjettikatkaisija (Cost Circuit Breaker)."""
+"""Cost circuit breaker (Chunk 6).
+
+Reads the running DeepSeek usage log and estimates spend; the run halts
+research gracefully if it crosses the per-run cap. Prices are configurable
+placeholders — set real DeepSeek rates via env to make the euro figure exact;
+the *mechanism* (halt + degrade to a partial report) is what matters.
+"""
+
+import os
 
 from ssi_blog_agent.config import settings
 
-# Karkea €/1K-token -hinnasto DeepSeek-malleille. TODO: päivitä todellisten
-# hintojen mukaan ja lue tarkka käyttö API-vastauksen usage-kentästä.
-PRICE_PER_1K_TOKENS_EUR = {
-    "deepseek-v4-flash": 0.0003,
-    "deepseek-v4-pro": 0.003,
+# €/1K tokens. Override with real DeepSeek pricing via env when known.
+PRICE_PER_1K_INPUT_EUR = {
+    "deepseek-v4-flash": float(os.getenv("PRICE_FLASH_IN", "0.0002")),
+    "deepseek-v4-pro": float(os.getenv("PRICE_PRO_IN", "0.0025")),
+}
+PRICE_PER_1K_OUTPUT_EUR = {
+    "deepseek-v4-flash": float(os.getenv("PRICE_FLASH_OUT", "0.0004")),
+    "deepseek-v4-pro": float(os.getenv("PRICE_PRO_OUT", "0.0050")),
 }
 
 
-class BudgetTracker:
-    def __init__(self) -> None:
-        self.spent_eur: float = 0.0
-
-    def record(self, model: str, input_tokens: int, output_tokens: int) -> None:
-        price = PRICE_PER_1K_TOKENS_EUR.get(model, 0.001)
-        self.spent_eur += (input_tokens + output_tokens) / 1000 * price
-
-    def exceeded(self) -> bool:
-        return self.spent_eur > settings.max_run_cost_eur
+def estimate_cost_eur(usage_log: list[dict]) -> float:
+    total = 0.0
+    for u in usage_log:
+        model = u["model"]
+        total += u["input_tokens"] / 1000 * PRICE_PER_1K_INPUT_EUR.get(model, 0.001)
+        total += u["output_tokens"] / 1000 * PRICE_PER_1K_OUTPUT_EUR.get(model, 0.002)
+    return total
 
 
-budget_tracker = BudgetTracker()
+def exceeded(usage_log: list[dict]) -> bool:
+    return estimate_cost_eur(usage_log) > settings.max_run_cost_eur
