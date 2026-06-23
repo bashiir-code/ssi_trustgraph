@@ -16,6 +16,8 @@ Grounding is preserved: both stages use only the gathered, cited facts and
 must label extrapolation vs evidence.
 """
 
+import re
+
 from ssi_blog_agent.clients import deepseek
 from ssi_blog_agent.models import AgentStatus, QuestionResearch
 
@@ -60,8 +62,15 @@ Säännöt: älä keksi lukuja (vain koosteiden/muistion tiedot). SIDO jokainen
 keskeinen väite ja luku lähteeseen numeroidulla viitteellä [n], käyttäen
 koosteissa annettuja numeroita. ÄLÄ luo omaa lähdeluetteloa — se liitetään
 automaattisesti. Säilytä epävarmuus-/ekstrapolaatiomerkinnät. Vältä toistuvia
-kliseitä. Skannattavat otsikot, lihavoidut avainhavainnot, taulukko vain kun
-se tuo lisäarvoa."""
+kliseitä.
+
+MUOTOILUVAATIMUKSET (noudata tarkasti):
+- Raportin pääotsikko on yksi `#`-taso; jokainen osio on `##`-taso (älä käytä
+  pelkkää lihavointia osion otsikkona).
+- Lihavoi avainhavainnot; käytä vertailutaulukkoa tilastoluvuille kun se tuo
+  lisäarvoa; käytä blockquotea (>) yhdelle kriittiselle trendille.
+- ÄLÄ käytä koodilohkoja (```), ÄLÄ liitä raakaa dataa tai JSON:ia. Vain
+  luettavaa asiantuntijatekstiä."""
 
 
 def build_source_index(bundle: list[QuestionResearch]) -> tuple[dict[str, int], list[str]]:
@@ -123,8 +132,20 @@ def synthesize(bundle: list[QuestionResearch]) -> str:
     )
 
 
+def _clean_report(md: str) -> str:
+    """Formatting guardrails: strip stray code fences / raw dumps, normalise
+    blank lines, ensure the report opens with a top-level heading."""
+    # Drop code fences entirely (keep their inner text), so no raw ``` blocks.
+    md = re.sub(r"```[a-zA-Z]*\n?", "", md)
+    # Collapse 3+ blank lines to one.
+    md = re.sub(r"\n{3,}", "\n\n", md).strip()
+    if not md.startswith("#"):
+        md = "# Viikon insinöörimarkkina-analyysi\n\n" + md
+    return md
+
+
 def write_report(bundle: list[QuestionResearch], analyst_brief: str) -> str:
-    """Writer pass (V4-Flash) + deterministic numbered bibliography."""
+    """Writer pass (V4-Flash) + cleanup + deterministic numbered bibliography."""
     index, ordered = build_source_index(bundle)
 
     body = deepseek.chat(
@@ -143,6 +164,7 @@ def write_report(bundle: list[QuestionResearch], analyst_brief: str) -> str:
         temperature=0.5,
     )
 
+    body = _clean_report(body)
     bibliography = "\n\n## Lähteet\n\n" + "\n".join(
         f"[{n}] {url}" for n, url in enumerate(ordered, start=1)
     )
