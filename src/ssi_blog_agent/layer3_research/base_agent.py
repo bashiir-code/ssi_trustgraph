@@ -17,8 +17,8 @@ primary_data() to inject an authoritative structured source.
 """
 
 from ssi_blog_agent.clients import deepseek
-from ssi_blog_agent.layer3_research import qdrant_cache, research_tools
-from ssi_blog_agent.models import FactSheet
+from ssi_blog_agent.layer3_research import redis_cache, research_tools
+from ssi_blog_agent.models import AgentStatus, FactSheet
 
 
 class ResearchAgent:
@@ -35,9 +35,27 @@ class ResearchAgent:
         return None
 
     def research(self, query: str) -> FactSheet:
-        # 1. Freshness cache
-        cached = qdrant_cache.get_fresh(query)
+        """Partial Success wrapper: an agent failure (e.g. a 429 that outlasts
+        retries) yields a FAILED fact sheet, never a crash — the rest of the
+        question and the report still complete."""
+        try:
+            return self._research(query)
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [warn] {self.name} failed on '{query[:50]}': {exc}")
+            return FactSheet(
+                sub_query=query,
+                summary=f"Tutkimus epäonnistui ({self.name}): {exc}",
+                sources=[],
+                specialist=self.name,
+                status=AgentStatus.FAILED,
+                error=str(exc),
+            )
+
+    def _research(self, query: str) -> FactSheet:
+        # 1. Freshness cache (7-day, Upstash Redis)
+        cached = redis_cache.get_fresh(query)
         if cached is not None:
+            print(f"  [cache] hit ({self.name}): {query[:50]}")
             return FactSheet(
                 sub_query=query,
                 summary=cached["summary"],
@@ -78,7 +96,7 @@ class ResearchAgent:
         summary = self._summarize(query, results, full_texts, primary)
 
         # 6. Cache for freshness reuse
-        qdrant_cache.put(query, summary, sources, doc_id=doc_id)
+        redis_cache.put(query, summary, sources, doc_id=doc_id)
 
         return FactSheet(
             sub_query=query,

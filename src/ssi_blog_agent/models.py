@@ -61,6 +61,8 @@ class FactSheet(BaseModel):
     specialist: Optional[str] = None
     doc_id: Optional[str] = None
     cache_hit: bool = False
+    status: AgentStatus = AgentStatus.OK  # Partial Success model (Chunk 4)
+    error: Optional[str] = None
 
 
 class CriticAssessment(BaseModel):

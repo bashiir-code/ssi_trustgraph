@@ -15,7 +15,7 @@ from ssi_blog_agent.clients import deepseek, supabase_client
 from ssi_blog_agent.graph import build_graph
 from ssi_blog_agent.layer1_data_entry import fetch_top_questions
 from ssi_blog_agent.layer4_presentation import synthesize, write_report
-from ssi_blog_agent.models import QuestionResearch
+from ssi_blog_agent.models import AgentStatus, QuestionResearch
 
 ARTIFACT_DIR = "artifacts"
 NUM_QUESTIONS = 5
@@ -82,11 +82,15 @@ def main() -> None:
 
     total_in = sum(u["input_tokens"] for u in deepseek.usage_log)
     total_out = sum(u["output_tokens"] for u in deepseek.usage_log)
+    failed_sheets = sum(
+        1 for qr in bundle for fs in qr.fact_sheets if fs.status == AgentStatus.FAILED
+    )
 
     print(f"\nArtifact: {artifact_path}")
     print("Supabase: report inserted")
     print(f"Researched: {len(bundle)}/{len(questions)} | "
-          f"triage fallbacks: {len(fallbacks)} | failures: {len(failures)}")
+          f"triage fallbacks: {len(fallbacks)} | question failures: {len(failures)} | "
+          f"failed fact sheets (degraded): {failed_sheets}")
     print(f"Token usage: {total_in} in / {total_out} out across {len(deepseek.usage_log)} calls")
 
 

@@ -1,5 +1,8 @@
 """Validated research tools (Chunk 0.5): Tavily search + Firecrawl scrape.
 
+Retries transient transport errors and 429/5xx with exponential backoff
+(Chunk 4) — free-tier rate limits must degrade, not crash.
+
 Compatibility notes from docs/source_compatibility.md:
 - Tyomarkkinatori is a client-rendered SPA -> always pass wait_for >= 8000.
 - Alma Media titles (Talouselama, Tekniikka&Talous, Rakennuslehti) are
@@ -7,10 +10,28 @@ Compatibility notes from docs/source_compatibility.md:
 """
 
 import httpx
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from ssi_blog_agent.config import settings
 
 
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in (429, 500, 502, 503, 504)
+    return False
+
+
+_RETRY = retry(
+    reraise=True,
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    retry=retry_if_exception(_is_retryable),
+)
+
+
+@_RETRY
 def tavily_search(
     query: str,
     max_results: int = 5,
@@ -37,6 +58,7 @@ def tavily_search(
     return resp.json().get("results", [])
 
 
+@_RETRY
 def firecrawl_scrape(url: str, wait_for: int = 0) -> str:
     """Returns clean markdown for a page. Set wait_for (ms) for JS-heavy SPAs."""
     payload: dict = {"url": url, "formats": ["markdown"]}

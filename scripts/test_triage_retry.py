@@ -11,14 +11,14 @@ Run: python scripts/test_triage_retry.py
 import sys
 
 from ssi_blog_agent.clients import deepseek
-from ssi_blog_agent.layer3_research import qdrant_cache, research_tools
+from ssi_blog_agent.layer3_research import redis_cache, research_tools
 from ssi_blog_agent.graph import build_graph
 from ssi_blog_agent.models import Domain, MemberQuestion, Specialist
 
 # --- Neutralise all Layer 3 / 4 network so the test is offline & fast ---
 research_tools.search_sources = lambda query, include_domains=None: []
-qdrant_cache.get_fresh = lambda query: None
-qdrant_cache.put = lambda *a, **k: None
+redis_cache.get_fresh = lambda query: None
+redis_cache.put = lambda *a, **k: None
 deepseek.chat = lambda messages, **kwargs: "stub-summary-or-report"
 
 

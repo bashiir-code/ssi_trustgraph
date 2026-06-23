@@ -17,7 +17,7 @@ must label extrapolation vs evidence.
 """
 
 from ssi_blog_agent.clients import deepseek
-from ssi_blog_agent.models import QuestionResearch
+from ssi_blog_agent.models import AgentStatus, QuestionResearch
 
 ANALYST_MODEL = "deepseek-v4-pro"
 WRITER_MODEL = "deepseek-v4-flash"
@@ -69,7 +69,7 @@ def build_source_index(bundle: list[QuestionResearch]) -> tuple[dict[str, int], 
     index: dict[str, int] = {}
     ordered: list[str] = []
     for qr in bundle:
-        for fs in qr.fact_sheets:
+        for fs in _ok_sheets(qr):
             for url in fs.sources:
                 if url not in index:
                     ordered.append(url)
@@ -77,14 +77,22 @@ def build_source_index(bundle: list[QuestionResearch]) -> tuple[dict[str, int], 
     return index, ordered
 
 
+def _ok_sheets(qr: QuestionResearch) -> list:
+    return [fs for fs in qr.fact_sheets if fs.status == AgentStatus.OK]
+
+
 def _format_for_analyst(bundle: list[QuestionResearch]) -> str:
     blocks = []
     for i, qr in enumerate(bundle, start=1):
         lines = [f"## Kysymys {i}: {qr.question.text}"]
-        for fs in qr.fact_sheets:
+        for fs in _ok_sheets(qr):
             tag = fs.specialist or "?"
             srcs = "; ".join(fs.sources) if fs.sources else "(ei lähteitä)"
             lines.append(f"### [{tag}] {fs.sub_query}\n{fs.summary}\nLähteet: {srcs}")
+        failed = [fs for fs in qr.fact_sheets if fs.status == AgentStatus.FAILED]
+        if failed:
+            gaps = "; ".join(fs.sub_query for fs in failed)
+            lines.append(f"**Huom: osa tutkimuksesta epäonnistui (tietopuute):** {gaps}")
         if qr.validation_note:
             lines.append(f"**Faktantarkistus (kattavuus {qr.coverage}%):** {qr.validation_note}")
         blocks.append("\n\n".join(lines))
@@ -95,7 +103,7 @@ def _format_for_writer(bundle: list[QuestionResearch], index: dict[str, int]) ->
     blocks = []
     for i, qr in enumerate(bundle, start=1):
         lines = [f"## Kysymys {i}: {qr.question.text}"]
-        for fs in qr.fact_sheets:
+        for fs in _ok_sheets(qr):
             tag = fs.specialist or "?"
             refs = ", ".join(f"[{index[u]}]" for u in fs.sources if u in index) or "(ei lähteitä)"
             lines.append(f"### [{tag}] {fs.sub_query}\n{fs.summary}\nLähdeviitteet: {refs}")
