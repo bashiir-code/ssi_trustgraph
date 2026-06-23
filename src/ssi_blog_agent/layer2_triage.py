@@ -23,8 +23,16 @@ MAX_TRIAGE_ATTEMPTS = 2
 MAX_SUB_QUERIES = 4  # initial coverage; the critic adds follow-ups per round
 
 TRIAGE_SYSTEM_PROMPT = f"""Olet triage-avustaja suomalaiselle insinöörialan
-tutkimusagentille. Pura jäsenkysymys 2-{MAX_SUB_QUERIES} konkreettiseksi,
-itsenäiseksi hakukyselyksi. Merkitse jokaiselle paras erikoisagentti:
+tutkimusagentille. Pura jäsenkysymys 2-{MAX_SUB_QUERIES} TARKAKSI, FOKUSOIDUKSI
+hakukyselyksi. Jokaisen alikyselyn on oltava:
+- SPESIFI ja vastattavissa konkreettisella faktalla, luvulla tai päivämäärällä
+  (ei laveita "yleiskuva"-kyselyitä),
+- kohdistettu SUOMEN markkinaan ja ajankohtaan (2025-2026),
+- ERILLINEN muista (ei päällekkäisyyttä),
+- suunnattu mahdollisuuksien mukaan auktoritatiiviseen lähteeseen
+  (Tilastokeskus, viranomaiset, toimialajärjestöt).
+
+Merkitse jokaiselle paras erikoisagentti:
 - "oracle": makro, sääntely, standardit (ISO/EU), toimialatrendit
 - "catalyst": teknologiat, työkalut, työnkulut, osaaminen ja kompetenssit
 - "quant": palkat, hinnat, kustannukset, numeeriset vertailut

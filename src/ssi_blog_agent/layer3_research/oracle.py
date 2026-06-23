@@ -1,6 +1,6 @@
-"""The Oracle — Makro & ympäristö: sääntely, ISO/EU-standardit, makrosyklit,
-toimialatrendit. Summarointi on pohjustettua poimintaa -> V4-Flash riittää;
-raskas päättely tapahtuu critic- ja analyst-kerroksissa (V4-Pro)."""
+"""The Oracle (V4-Pro) — Makro & ympäristö: sääntely, ISO/EU-standardit,
+makrosyklit, toimialatrendit. Vaatii syvää kontekstin ymmärrystä — tutkimuksen
+laatu priorisoidaan tehokkuuden edelle tässä kerroksessa."""
 
 from ssi_blog_agent.layer3_research.base_agent import ResearchAgent
 
@@ -14,7 +14,7 @@ vastaa kysymykseen, sano se rehellisesti. Viittaa keskeisiin lähde-URLeihin."""
 
 class OracleAgent(ResearchAgent):
     name = "oracle"
-    model = "deepseek-v4-flash"
+    model = "deepseek-v4-pro"
     system_prompt = ORACLE_PROMPT
     include_domains = [
         "valtioneuvosto.fi",

@@ -21,15 +21,19 @@ MAX_FOLLOWUPS_PER_ROUND = 3
 CRITIC_SYSTEM_PROMPT = """Olet tutkimuksen kriitikko. Saat jäsenkysymyksen ja
 siihen tähän mennessä kerätyt faktakoosteet lähteineen. Arvioi KRIITTISESTI:
 - kuinka kattavasti kysymykseen on vastattu (0-100),
-- mitkä OLENNAISET näkökulmat puuttuvat tai ovat heikosti tuettuja,
+- mitkä KONKREETTISET faktat, luvut tai näkökulmat puuttuvat tai ovat heikosti
+  tuettuja (nimeä ne täsmällisesti, älä yleisluontoisesti),
 - mitkä lähteiden väliset RISTIRIIDAT vaativat lisäselvitystä.
 
-Ehdota tarkkoja JATKOHAKUJA aukkojen täyttämiseksi ja merkitse kullekin paras
-erikoisagentti: "oracle" (sääntely/makro/standardit), "catalyst"
-(teknologia/työkalut/osaaminen), "quant" (palkat/hinnat/numerot).
+Ehdota TÄSMÄLLISIÄ, FOKUSOITUJA jatkohakuja, jotka täyttävät nimetyn aukon
+yhdellä konkreettisella faktalla/luvulla. Vältä päällekkäisyyttä jo tehtyjen
+hakujen kanssa ja suosi auktoritatiivisia lähteitä (Tilastokeskus, viranomaiset,
+toimialajärjestöt). Merkitse kullekin paras erikoisagentti: "oracle"
+(sääntely/makro/standardit), "catalyst" (teknologia/työkalut/osaaminen),
+"quant" (palkat/hinnat/numerot).
 
 Jos kattavuus on jo korkea (>= 85) eikä olennaisia aukkoja ole, palauta tyhjä
-follow_up_queries-lista. Älä toista jo tehtyjä hakuja.
+follow_up_queries-lista.
 
 Vastaa AINOASTAAN JSON-objektina:
 {"coverage": <int 0-100>, "gaps": ["..."],
