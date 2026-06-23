@@ -25,6 +25,7 @@ class Settings:
 
     cache_freshness_days: int = 7
     triage_max_retries: int = 2
+    research_concurrency: int = int(os.getenv("RESEARCH_CONCURRENCY", "3"))
 
 
 settings = Settings()

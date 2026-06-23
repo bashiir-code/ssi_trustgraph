@@ -13,8 +13,10 @@ renders one cited report -> artifact + Supabase.
 import datetime
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ssi_blog_agent.clients import deepseek, supabase_client
+from ssi_blog_agent.config import settings
 from ssi_blog_agent.crosscutting import budget, observability, run_lock
 from ssi_blog_agent.graph import build_graph
 from ssi_blog_agent.layer1_data_entry import dedup_questions, fetch_top_questions
@@ -39,28 +41,40 @@ def _run() -> str:
     failures: list[str] = []
     budget_hit = False
 
-    # Phase 1 — iterative deep research per question.
-    for i, question in enumerate(questions, start=1):
+    def _research_one(question):
+        # Budget breaker gates at question granularity: a question that starts
+        # after the cap is reached skips immediately (the report still ships
+        # with whatever completed).
         if budget.exceeded(deepseek.usage_log):
-            print(f"  [budget] cap reached (~{budget.estimate_cost_eur(deepseek.usage_log):.2f} EUR)"
-                  " — halting further research", file=sys.stderr)
-            budget_hit = True
-            break
-        print(f"[{i}/{len(questions)}] research: {question.text[:60]}...")
-        try:
-            state = app.invoke({"question": question}, {"recursion_limit": 50})
-            bundle.append(QuestionResearch(
-                question=question,
-                fact_sheets=state.get("fact_sheets", []),
-                coverage=state.get("coverage", 0),
-                rounds=state.get("research_round", 1),
-                validation_note=state.get("validation_note", ""),
-            ))
-            if state.get("triage_fallback_used"):
-                fallbacks.append(question.id)
-        except Exception as exc:  # one bad question must not kill the batch
-            print(f"  [warn] kysymys epäonnistui: {exc}", file=sys.stderr)
-            failures.append(question.id)
+            return question, None
+        return question, app.invoke({"question": question}, {"recursion_limit": 50})
+
+    # Phase 1 — iterative deep research, questions in parallel (bounded).
+    # Each question stays internally sequential, so external-API burst is
+    # capped at ~research_concurrency. All depth/focus capabilities unchanged.
+    print(f"Researching {len(questions)} questions (concurrency {settings.research_concurrency})...")
+    with ThreadPoolExecutor(max_workers=settings.research_concurrency) as pool:
+        futures = {pool.submit(_research_one, q): q for q in questions}
+        for fut in as_completed(futures):
+            q = futures[fut]
+            try:
+                question, state = fut.result()
+                if state is None:
+                    budget_hit = True
+                    continue
+                bundle.append(QuestionResearch(
+                    question=question,
+                    fact_sheets=state.get("fact_sheets", []),
+                    coverage=state.get("coverage", 0),
+                    rounds=state.get("research_round", 1),
+                    validation_note=state.get("validation_note", ""),
+                ))
+                if state.get("triage_fallback_used"):
+                    fallbacks.append(question.id)
+                print(f"  done: {question.text[:55]} (coverage {state.get('coverage', 0)}%)")
+            except Exception as exc:  # one bad question must not kill the batch
+                print(f"  [warn] kysymys epäonnistui: {exc}", file=sys.stderr)
+                failures.append(q.id)
 
     if not bundle:
         return "failed"
