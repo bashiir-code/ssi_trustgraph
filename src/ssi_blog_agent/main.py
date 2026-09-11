@@ -110,6 +110,12 @@ def _run() -> str:
 
 
 def main() -> None:
+    if settings.demo_mode:
+        from ssi_blog_agent import demo
+
+        demo.install()
+        print("DEMO_MODE: external services replaced by offline fakes, no API keys used.")
+
     if not run_lock.acquire():
         print("Ajo ohitettu: edellinen ajo on yhä kesken (run-lukko).", file=sys.stderr)
         observability.notify("skipped_locked")

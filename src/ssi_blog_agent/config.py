@@ -27,5 +27,8 @@ class Settings:
     triage_max_retries: int = 2
     research_concurrency: int = int(os.getenv("RESEARCH_CONCURRENCY", "3"))
 
+    # Offline demo: every external service faked in-process (see demo.py).
+    demo_mode: bool = os.getenv("DEMO_MODE", "").lower() in ("1", "true", "yes")
+
 
 settings = Settings()
