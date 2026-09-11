@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  agent-demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e . -r requirements.txt pytest
+
+      - name: Offline proofs (triage retry, partial success, citations)
+        run: |
+          python scripts/test_triage_retry.py
+          python scripts/test_partial_success.py
+          python scripts/test_presentation.py
+
+      - name: End-to-end tests (demo mode)
+        run: pytest -q tests
+
+      # The real pipeline with every external service faked in-process:
+      # dedup -> triage -> specialists -> critic loop -> validator ->
+      # analyst -> writer -> cited report. No secrets needed.
+      - name: Run the agent pipeline (demo mode)
+        env:
+          DEMO_MODE: "1"
+        run: python -m ssi_blog_agent.main
+
+      - name: Show the generated report
+        run: cat artifacts/*.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: demo-report
+          path: artifacts/*.md
